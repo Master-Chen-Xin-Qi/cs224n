@@ -89,5 +89,16 @@ class SynthesizerAttention(nn.Module):
         #   - Paste over the CausalSelfAttention above and modify it minimally.
         #   - Consider especially the parameters self.w1, self.w2 and self.b2.
         #       How do these map to the matrices in the handout?
+        B, T, C = x.size()
+        v = self.value(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        b = self.w1(x).view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+        b = F.relu(b)
+        attn = b @ self.w2[:, :T] + self.b2[:T] # (B, nh, T, hs) x (hs, T) -> (B, nh, T, T)
+        attn = attn.masked_fill(self.mask[:, :, :T, :T] == 0, mask='-inf')
+        attn = F.softmax(attn, dim=-1)
+        attn = self.attn_drop(attn)
+        attn = attn @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
+        attn = attn.transpose(1, 2).contiguous().view(B, T, C)
+        attn = self.resid_drop(self.proj(attn))
+        return attn
 
-        raise NotImplementedError
